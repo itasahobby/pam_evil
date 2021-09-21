@@ -5,6 +5,7 @@ PAM module to exfiltrate credentials
 
 Install the module:
 ```
+apt install libpam0g-dev
 git clone https://github.com/itasahobby/pam_evil.git
 make install
 ```
