@@ -21,6 +21,3 @@ In colaboration with [Dreg](https://github.com/David-Reguera-Garcia-Dreg/)
 ## References
 * https://web.archive.org/web/20190523222819/https://fedetask.com/write-linux-pam-module/
 * https://unix.stackexchange.com/questions/428437/pam-pam-sm-authenticate-try-to-get-get-user-and-password-of-non-esixting-users
-
-## Mentions
-Idea inspired by Dreg
