@@ -80,7 +80,7 @@ SSL_CTX* init_ctx()
 
 	OpenSSL_add_all_algorithms();
 	SSL_load_error_strings();
-	method = TLS_method();
+	method = TLS_client_method();
 	ctx = SSL_CTX_new(method);
 	return ctx;
 }
